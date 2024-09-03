@@ -3,7 +3,7 @@ name: Build/Test Plugins
 on:
   push:
     branches:
-      - atlas-plugin
+      - main
 
 jobs:
   backend:
