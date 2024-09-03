@@ -16,4 +16,3 @@ build-all-plugins: clean test-all-plugins
 
 clean:
     rm -rf ./build
-
