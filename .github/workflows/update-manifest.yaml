@@ -18,7 +18,6 @@ jobs:
                echo "got plugins: $plugins"
                echo '
                # this manifest contains the name of every currently implemented plugin. it can be pulled via https://github.com/opencost/opencost-plugins/raw/main/manifest to get an up to date list of current plugins.
-
                ' > manifest
                echo "$plugins" >> manifest
                echo "manifest updated"
