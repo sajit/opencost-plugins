@@ -1,4 +1,4 @@
-name: Build/Test Plugins
+name: Update Manifest
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  backend:
+  update-manifest:
     runs-on: ubuntu-latest
     steps:
         - uses: actions/checkout@v4
