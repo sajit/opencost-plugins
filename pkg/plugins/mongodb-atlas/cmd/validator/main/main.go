@@ -104,6 +104,7 @@ func validate(respDaily, respHourly []*pb.CustomCostResponse) bool {
 	}
 
 	seenCosts := map[string]bool{}
+	nonZeroBilledCosts := 0
 	//verify that the returned costs are non zero
 	for _, resp := range respDaily {
 		for _, cost := range resp.Costs {
@@ -116,9 +117,16 @@ func validate(respDaily, respHourly []*pb.CustomCostResponse) bool {
 				log.Errorf("daily billed cost returned by plugin mongodb-atlas is zero for cost: %v", cost)
 				return false
 			}
+			if cost.GetBilledCost() > 0 {
+				nonZeroBilledCosts++
+			}
 		}
 	}
 
+	if nonZeroBilledCosts == 0 {
+		log.Errorf("no non-zero billed costs returned by plugin mongodb-atlas")
+		return false
+	}
 	expectedCosts := []string{
 		"ATLAS_AWS_DATA_TRANSFER_DIFFERENT_REGION",
 		"ATLAS_AWS_DATA_TRANSFER_INTERNET",
