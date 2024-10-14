@@ -73,12 +73,7 @@ func main() {
 
 func validate(respDaily, respHourly []*pb.CustomCostResponse) bool {
 	if len(respDaily) == 0 {
-		log.Errorf("no daily response received from datadog plugin")
-		return false
-	}
-
-	if len(respHourly) == 0 {
-		log.Errorf("no hourly response received from datadog plugin")
+		log.Errorf("no daily response received from openai plugin")
 		return false
 	}
 
@@ -91,124 +86,61 @@ func validate(respDaily, respHourly []*pb.CustomCostResponse) bool {
 		}
 	}
 
-	for _, resp := range respHourly {
-		if resp.Errors != nil {
-			multiErr = multierror.Append(multiErr, fmt.Errorf("errors occurred in hourly response: %v", resp.Errors))
-		}
-	}
-
 	// check if any errors occurred
 	if multiErr != nil {
-		log.Errorf("Errors occurred during plugin testing for datadog: %v", multiErr)
+		log.Errorf("Errors occurred during plugin testing for open ai: %v", multiErr)
 		return false
 	}
-
-	dbmCostsInRange := 0
+	seenCosts := map[string]bool{}
+	var costSum float32
 	//verify that the returned costs are non zero
 	for _, resp := range respDaily {
 		if len(resp.Costs) == 0 && resp.Start.AsTime().After(time.Now().Truncate(24*time.Hour).Add(-1*time.Minute)) {
-			log.Debugf("today's daily costs returned by plugin datadog are empty, skipping: %v", resp)
+			log.Debugf("today's daily costs returned by plugin openai are empty, skipping: %v", resp)
 			continue
 		}
-		var costSum float32
-		for _, cost := range resp.Costs {
-			costSum += cost.GetListCost()
 
-			if cost.GetListCost() == 0 {
+		for _, cost := range resp.Costs {
+			costSum += cost.GetBilledCost()
+			seenCosts[cost.GetResourceName()] = true
+			if cost.GetBilledCost() == 0 {
 				log.Debugf("got zero cost for %v", cost)
 			}
-			if cost.GetListCost() > 100 {
-				log.Errorf("daily cost returned by plugin datadog for %v is greater than 100", cost)
+			if cost.GetBilledCost() > 1 {
+				log.Errorf("daily cost returned by plugin openai for %v is greater than 1", cost)
 				return false
 			}
-
-			//as of 10/2024, dbm hosts cost $84 a month or about $2.70. confirm that
-			// range
-			if cost.GetResourceName() == "dbm_host_count" {
-				// filter out recent costs since those might not be full days worth
-				if cost.GetListCost() > 2.5 && cost.GetListCost() < 3.0 {
-					dbmCostsInRange++
-				}
-			}
-		}
-		if costSum == 0 {
-			log.Errorf("daily costs returned by datadog plugin are zero")
-			return false
 		}
 
 	}
-
-	if dbmCostsInRange == 0 {
-		log.Errorf("no dbm costs in expected range found in daily costs")
+	if costSum == 0 {
+		log.Errorf("daily costs returned by openai plugin are zero")
 		return false
 	}
-
-	seenCosts := map[string]bool{}
-	for _, resp := range respHourly {
-		var costSum float32
-		for _, cost := range resp.Costs {
-			seenCosts[cost.GetResourceName()] = true
-			costSum += cost.GetListCost()
-		}
-		if costSum == 0 {
-			log.Errorf("hourly cost returned by plugin datadog is zero")
-			return false
-		}
-
-	}
-
 	expectedCosts := []string{
-		"agent_host_count",
-		"logs_indexed_events_15_day_count",
-		"container_count_excl_agent",
-		"agent_container",
-		"dbm_host_count",
+		"GPT-4o mini",
+		"GPT-4o",
+		"Other models",
 	}
 
 	for _, cost := range expectedCosts {
 		if !seenCosts[cost] {
-			log.Errorf("hourly cost %s not found in plugin datadog response", cost)
+			log.Errorf("daily cost %s not found in plugin openai response", cost)
 			return false
 		}
-	}
-
-	if len(seenCosts) != len(expectedCosts) {
-		log.Errorf("hourly costs returned by plugin datadog do not equal expected costs")
-		log.Errorf("seen costs: %v", seenCosts)
-		log.Errorf("expected costs: %v", expectedCosts)
-
-		log.Errorf("response: %v", respHourly)
-		return false
 	}
 
 	// verify the domain matches the plugin name
 	for _, resp := range respDaily {
-		if resp.Domain != "datadog" {
-			log.Errorf("daily domain returned by plugin datadog does not match plugin name")
+		if resp.Domain != "openai" {
+			log.Errorf("daily domain returned by plugin openai does not match plugin name")
 			return false
 		}
 	}
 
-	seenCosts = map[string]bool{}
-	for _, resp := range respHourly {
-		for _, cost := range resp.Costs {
-			seenCosts[cost.GetResourceName()] = true
-			if cost.GetListCost() == 0 {
-				log.Errorf("hourly cost returned by plugin datadog is zero")
-				return false
-			}
-			if cost.GetListCost() > 100 {
-				log.Errorf("hourly cost returned by plugin datadog for %v is greater than 100", cost)
-				return false
-			}
-		}
-	}
-
-	for _, cost := range expectedCosts {
-		if !seenCosts[cost] {
-			log.Errorf("daily cost %s not found in plugin datadog response", cost)
-			return false
-		}
+	if len(seenCosts) < len(expectedCosts)-1 || len(seenCosts) > len(expectedCosts)+1 {
+		log.Errorf("daily costs returned by openai plugin are very different than expected")
+		return false
 	}
 	return true
 }
